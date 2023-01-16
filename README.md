@@ -1,5 +1,5 @@
 # cell_automata
-##simple cell_automata
+## simple cell_automata
 
 #### only have Linux support
 
