@@ -18,8 +18,11 @@ launch app:
 
 shortcuts:
 
-RMB - add pixel(no hold)
+```
+ RMB - add pixel(no hold)
 "q" - exit
 "d" - toggle menu
 "s" - start/stop animation
 "r" - reset texture and stop animation
+```
+
