@@ -149,12 +149,9 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
 
-    glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GL_TRUE);
-    glfwWindowHint(GLFW_DECORATED, GL_FALSE);
+    //glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GL_TRUE);
+    //glfwWindowHint(GLFW_DECORATED, GL_FALSE);
 
 
     // glfw window creation
@@ -163,6 +160,9 @@ int main()
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
+        const char** errDecr;
+        glfwGetError(errDecr);
+        std::cout <<errDecr<<"\n";
         glfwTerminate();
         return -1;
     }
