@@ -1,5 +1,4 @@
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include <gl_deps.h>
 #include <stb_image.h>
 
 
@@ -16,42 +15,33 @@
 #include <sstream>
 #include <cmath>
 #include <vector>
+#include <memory>
 
+#include "shader.h"
+#include "compute_shader.h"
 
-
-
-void GLAPIENTRY
-MessageCallback( GLenum source,
-                 GLenum type,
-                 GLuint id,
-                 GLenum severity,
-                 GLsizei length,
-                 const GLchar* message,
-                 const void* userParam )
-{
-  fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
-           ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
-            type, severity, message );
-}
-
-
+#include "texture.h"
 
 
 // settings
 const unsigned int SCR_WIDTH = 600;
 const unsigned int SCR_HEIGHT = 600;
 
-bool show_demo_window = false;
-bool second_window = false;
 
+bool menu_window_state = false;
 
-unsigned int computeSetShader;
-unsigned int computeShaderReset;
+std::unique_ptr<ComputeShader> cs_play;
+std::unique_ptr<ComputeShader> cs_set;
+std::unique_ptr<ComputeShader> cs_reset;
+std::unique_ptr<ComputeShader> cs_copy;
+std::unique_ptr<Shader> gr_shader;
 
-GLuint texture_id;
-unsigned int texture_resolution = 10;
+std::unique_ptr<Texture> texture_front;
+std::unique_ptr<Texture> texture_back;
+
 
 float color_value[3] = {0.1f,0.5f,0.7f};
+unsigned int texture_resolution = 20;
 //std::vector<float> texture_init_data;
 
 int mouse_x = 0, mouse_y = 0;
@@ -72,45 +62,21 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
 
 
-
-std::string readfile(const char* name){
-    std::stringstream s;
-    
-    std::cout<<"opening file -> "<<name;
-
-    std::ifstream file(name);
-
-    if(!file.is_open()){
-        std::cout<<" -> could not open file..\n";
-        return "";
-    }
-    std::cout<<" -> opened -> reading file.. \n";
-    while(file){
-        char c = file.get();
-        s<<c;
-        //std::cout<<c;
-    }
-    return s.str();
+void GLAPIENTRY
+MessageCallback( GLenum source,
+                 GLenum type,
+                 GLuint id,
+                 GLenum severity,
+                 GLsizei length,
+                 const GLchar* message,
+                 const void* userParam )
+{
+  fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+           ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
+            type, severity, message );
 }
 
 
-void initTexture(){
-    
-    
-
-    glGenTextures(1, &texture_id);
-    glBindTexture(GL_TEXTURE_2D, texture_id);
-    // set the texture wrapping/filtering options (on the currently bound texture object)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // load and generate the texture
-    
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texture_resolution, texture_resolution, 0, GL_RGBA, GL_FLOAT, NULL);
-    //glGenerateMipmap(texture);
-
-}
 
 
 
@@ -134,16 +100,17 @@ int main()
 
     // glfw: initialize and configure
     // ------------------------------
-    
-    const char* glsl_version = "#version 430";
-    
     // Initialise GLFW
+
     if( !glfwInit() )
     {
       std::cout<<"Failed to initialize GLFW\n";
       return -1;
     }
   
+
+
+    const char* glsl_version = "#version 430";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -165,15 +132,7 @@ int main()
         glfwTerminate();
         return -1;
     }
-
     glfwMakeContextCurrent(window);
-
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetKeyCallback(window, keyboard_callback);
-    glfwSetMouseButtonCallback(window, mouse_button_callback);
-    glfwSetCursorPosCallback(window, cursor_position_callback);
-    //glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-
 
     // glad: load all OpenGL function pointers
     // ---------------------------------------
@@ -183,11 +142,14 @@ int main()
         return -1;
     }
 
-
-
     glEnable              ( GL_DEBUG_OUTPUT );
     glDebugMessageCallback( MessageCallback, 0 );
 
+
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetKeyCallback(window, keyboard_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetCursorPosCallback(window, cursor_position_callback);
 
 
 
@@ -216,161 +178,40 @@ int main()
 
 
 
-    // build and compile our shader program
-    // ------------------------------------
-
-
-    int success;
-    char infoLog[512];
-    std::string shader_string;
-
-    //compute shader
-
-    unsigned int compute_shader_code;
-
-    shader_string = readfile("shaders/cell_automata_shader.glsl"); 
-    const char* compute_shader_content = shader_string.c_str();
-
-    compute_shader_code = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(compute_shader_code, 1, &compute_shader_content, NULL);
-    glCompileShader(compute_shader_code);
-    // check for shader compile errors
-    glGetShaderiv(compute_shader_code, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(compute_shader_code, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::COMPUTE::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-    // shader Program
-    unsigned int computeShader = glCreateProgram();
-    glAttachShader(computeShader, compute_shader_code);
-    glLinkProgram(computeShader);
-
-    glGetProgramiv(computeShader, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(computeShader, 512, NULL, infoLog);
-        std::cout << "ERROR::COMPUTE_SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-    }
-
-
-    unsigned int compute_set_shader_code;
-
-    shader_string = readfile("shaders/cell_automata_set_shader.glsl"); 
-    const char* compute_set_shader_content = shader_string.c_str();
-
-    compute_set_shader_code = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(compute_set_shader_code, 1, &compute_set_shader_content, NULL);
-    glCompileShader(compute_set_shader_code);
-    // check for shader compile errors
-    glGetShaderiv(compute_set_shader_code, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(compute_set_shader_code, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::COMPUTE::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-    // shader Program
-    computeSetShader = glCreateProgram();
-    glAttachShader(computeSetShader, compute_set_shader_code);
-    glLinkProgram(computeSetShader);
-
-    glGetProgramiv(computeSetShader, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(computeSetShader, 512, NULL, infoLog);
-        std::cout << "ERROR::COMPUTE_SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-    }
-
-
-
-
-
-    unsigned int compute_shader_reset_code;
-
-    shader_string = readfile("shaders/cell_automata_shader_reset.glsl"); 
-    const char* compute_shader_reset_content = shader_string.c_str();
-
-    compute_shader_reset_code = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(compute_shader_reset_code, 1, &compute_shader_reset_content, NULL);
-    glCompileShader(compute_shader_reset_code);
-    // check for shader compile errors
-    glGetShaderiv(compute_shader_reset_code, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(compute_shader_reset_code, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::COMPUTE::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-    // shader Program
-    computeShaderReset = glCreateProgram();
-    glAttachShader(computeShaderReset, compute_shader_reset_code);
-    glLinkProgram(computeShaderReset);
-
-    glGetProgramiv(computeShaderReset, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(computeShaderReset, 512, NULL, infoLog);
-        std::cout << "ERROR::COMPUTE_SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-    }
 
 
 
 
 
 
+    cs_play = std::make_unique<ComputeShader>("shaders/cell_automata_shader.glsl");
+
+    cs_set = std::make_unique<ComputeShader>("shaders/cell_automata_set_shader.glsl");
+
+    cs_reset = std::make_unique<ComputeShader>("shaders/cell_automata_shader_reset.glsl");
+
+    cs_copy = std::make_unique<ComputeShader>("shaders/cell_automata_shader_copy.glsl");
+
+    gr_shader = std::make_unique<Shader>("shaders/vertex_shader.vs", "shaders/fragment_shader.frag");
+
+    texture_back = std::make_unique<Texture>(texture_resolution);
+    texture_front = std::make_unique<Texture>(texture_resolution);
+
+
+
+    cs_reset.get()->bind();
+    texture_back.get()->compute_bind(0);
+    cs_reset.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+    cs_reset.get()->bind();
+    texture_front.get()->compute_bind(0);
+    cs_reset.get()->dispatch(texture_resolution, texture_resolution, 1);
 
 
 
 
-
-    // vertex shader
-    //
-    //
-    //open shader files
-    shader_string = readfile("shaders/vertex_shader.vs"); 
-    const char* vertex_shader_content = shader_string.c_str();
-    
-    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertex_shader_content, NULL);
-    glCompileShader(vertexShader);
-    // check for shader compile errors
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-
-
-    // fragment shader
-
-    //open shader files
-    shader_string = readfile("shaders/fragment_shader.frag"); 
-    const char* fragment_shader_content = shader_string.c_str();
-    
-    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragment_shader_content, NULL);
-    glCompileShader(fragmentShader);
-    // check for shader compile errors
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
-    // link shaders
-    unsigned int shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    // check for linking errors
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-    }
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    glUseProgram(shaderProgram);
-    unsigned int tex_loc = glGetUniformLocation(shaderProgram, "tex");
-    glUniform1i(tex_loc, 0); 
+    gr_shader.get()->bind();
+    gr_shader.get()->setUniformTexure("tex", 0, texture_back.get()->id);
 
 
 
@@ -421,32 +262,6 @@ int main()
 
 
 
-    // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
-    // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
-    //glBindVertexArray(0);
-
-
-    // bind the VAO (it was already bound, but just to demonstrate): seeing as we only have a single VAO we can 
-    // just bind it beforehand before rendering the respective triangle; this is another approach.
-    //glBindVertexArray(VAO);
-   
-        
-    
-    // texture generation
-    // ------------------
-    //
-    //std::cout<<"loading image texture/1.jpg -> ";
-    
-    initTexture();
-
-
-
-    glUseProgram(computeShader);
-    glBindImageTexture(0, texture_id, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-     
-    glDispatchCompute(texture_resolution, texture_resolution, 1);
-    // make sure writing to image has finished before read
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 
 
@@ -469,14 +284,8 @@ int main()
         ImGui::NewFrame();
         
 
-        // ImGui render 
-
-        if(show_demo_window){
-            ImGui::ShowDemoWindow(&show_demo_window);
-        }
-
-        
-        if(second_window){
+        // ImGui render         
+        if(menu_window_state){
             static int counter = 0;
 
             ImGui::Begin("cell automata settings");
@@ -512,6 +321,28 @@ int main()
 
 
 
+        if(cell_automata_play_state){
+            if(delay >= 1.f){
+                //compute shader part
+
+                cs_play.get()->bind();
+                texture_front.get()->compute_bind(0);
+                cs_play.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+                
+
+                cs_copy.get()->bind();
+                texture_front.get()->compute_bind(0);
+                texture_back.get()->compute_bind(1);
+                cs_copy.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+
+                delay = 0;
+
+            }
+
+        }
+
 
 
 
@@ -521,36 +352,10 @@ int main()
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-
-
-
-
-        if(cell_automata_play_state){
-            if(delay >= 1.f){
-                //compute shader part
-
-                glUseProgram(computeShader);
-                glBindImageTexture(0, texture_id, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-         
-                glDispatchCompute(texture_resolution, texture_resolution, 1);
-
-                // make sure writing to image has finished before read
-                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-                delay = 0;
-            }
-
-        }
-        
-
-
-
         // be sure to activate the shader before any calls to glUniform
-        glUseProgram(shaderProgram);
-        glActiveTexture(GL_TEXTURE0+0);       
-        glBindTexture(GL_TEXTURE_2D, texture_id);
-        glUniform3f(glGetUniformLocation(shaderProgram, "color"), color_value[0], color_value[1], color_value[2]);
-
+        gr_shader.get()->bind();
+        texture_front.get()->display_bind(0);
+        glUniform3f(glGetUniformLocation(gr_shader.get()->id, "color"), color_value[0], color_value[1], color_value[2]);
 
         glBindVertexArray(VAO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementbuffer);
@@ -558,8 +363,16 @@ int main()
         
         
         
+
+
+
         //render ImGui on to screen
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+
+
+
+
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -572,15 +385,10 @@ int main()
     }
     
 
-    glDeleteTextures(1, &texture_id);
     // optional: de-allocate all resources once they've outlived their purpose:
     // ------------------------------------------------------------------------
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
-
-    glDeleteProgram(computeShader);
-    glDeleteProgram(computeSetShader);
-    glDeleteProgram(shaderProgram);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -598,20 +406,25 @@ void keyboard_callback(GLFWwindow* window, int key, int scancode, int action, in
     if(key == GLFW_KEY_Q && action ==GLFW_PRESS){
         glfwSetWindowShouldClose(window, true);
     }
+
     if (key == GLFW_KEY_S && action == GLFW_PRESS){
         cell_automata_play_state = !cell_automata_play_state;
         std::cout<<"play state: "<<cell_automata_play_state<<"\n";
     }
+
     if (key == GLFW_KEY_D && action == GLFW_PRESS){
-        second_window = !second_window;
+        menu_window_state = !menu_window_state;
     }
+
     if (key == GLFW_KEY_R && action == GLFW_PRESS){
-        initTexture();
-        glUseProgram(computeShaderReset);
-        glBindImageTexture(0, texture_id, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-        glDispatchCompute(texture_resolution, texture_resolution, 1);
-        // make sure writing to image has finished before read
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        
+        cs_reset.get()->bind();
+        texture_back.get()->compute_bind(0);
+        cs_reset.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+        cs_reset.get()->bind();
+        texture_front.get()->compute_bind(0);
+        cs_reset.get()->dispatch(texture_resolution, texture_resolution, 1);
 
         cell_automata_play_state = false;
 
@@ -626,21 +439,28 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
         unsigned int putX =  int(float(mouse_x)/float(s_width)*float(texture_resolution)); 
         unsigned int putY =  (texture_resolution-1) - int(float(mouse_y)/float(s_height)*float(texture_resolution)); 
 
-        glUseProgram(computeSetShader);
-        glBindImageTexture(0, texture_id, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-        glUniform2i(glGetUniformLocation(computeSetShader, "putPos"), putX, putY); 
-        glDispatchCompute(texture_resolution, texture_resolution, 1);
-        // make sure writing to image has finished before read
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+        cs_set.get()->bind();
+        texture_front.get()->compute_bind(0);
+        glUniform2i(glGetUniformLocation(cs_set.get()->id, "putPos"), putX, putY); 
+        cs_set.get()->dispatch(texture_resolution, texture_resolution, 1);
         
+        cs_set.get()->bind();
+        texture_back.get()->compute_bind(0);
+        glUniform2i(glGetUniformLocation(cs_set.get()->id, "putPos"), putX, putY); 
+        cs_set.get()->dispatch(texture_resolution, texture_resolution, 1);
+        
+
         std::cout<<mouse_x<<" "<<mouse_y<<"     "<<putX<<" "<<putY<<"\n";
     
     }
+    
 }
 
 static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
 {
     mouse_x = xpos; mouse_y = ypos;
+
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

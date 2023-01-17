@@ -9,20 +9,29 @@ void main(){
     ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
     
     float self_v = imageLoad(imgOutput, texelCoord).x; 
-    float left_v = imageLoad(imgOutput, texelCoord + ivec2(-1, 0)).x;
-    float top_v = imageLoad(imgOutput, texelCoord + ivec2( 0, 1)).x;
-    float right_v = imageLoad(imgOutput, texelCoord + ivec2( 1, 0)).x;
-    float bottom_v = imageLoad(imgOutput, texelCoord + ivec2( 0,-1)).x;
+
+
+    float n1 = imageLoad(imgOutput, texelCoord + ivec2(-1,-1)).x;
+    float n2 = imageLoad(imgOutput, texelCoord + ivec2(-1, 0)).x;
+    float n3 = imageLoad(imgOutput, texelCoord + ivec2(-1, 1)).x;
+    float n4 = imageLoad(imgOutput, texelCoord + ivec2( 0, 1)).x;
+    float n5 = imageLoad(imgOutput, texelCoord + ivec2( 1, 1)).x;
+    float n6 = imageLoad(imgOutput, texelCoord + ivec2( 1, 0)).x;
+    float n7 = imageLoad(imgOutput, texelCoord + ivec2( 1,-1)).x;
+    float n8 = imageLoad(imgOutput, texelCoord + ivec2( 0,-1)).x;
+
+
+
+
+    float sum_v = n1 + n2 + n3 + n4 + n5 + n6 + n7 + n8;
     
-    float sum_v = left_v + top_v + right_v + bottom_v;
-    
-    if(self_v==1){
-        if(sum_v >= 3){
+    if(self_v>0){
+        if(sum_v < 2 || sum_v > 3){
             self_v = 0;
         }
     }
     else{
-        if(sum_v == 2){
+        if(sum_v == 3){
             self_v = 1;
         }
     }
