@@ -326,7 +326,8 @@ int main()
                 //compute shader part
 
                 cs_play.get()->bind();
-                texture_front.get()->compute_bind(0);
+                texture_back.get()->compute_bind(0);
+                texture_front.get()->compute_bind(1);
                 cs_play.get()->dispatch(texture_resolution, texture_resolution, 1);
 
                 
