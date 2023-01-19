@@ -1,18 +1,18 @@
-# simple cell automata
+# Simple cell automata
 
-## Linux and Windows support
+##### Linux and Windows support
 
 shortcuts:
 
 ```
- RMB - add pixel(no hold)
+"RMB" - add pixel(no hold)
 "q" - exit
 "d" - toggle menu
 "s" - start/stop animation
 "r" - reset texture and stop animation
 ```
 
-###On Linux
+##### On Linux
 
 to make app:
 ```
@@ -28,7 +28,7 @@ launch app:
   ./app
 ```
 
-###On Windows
+##### On Windows
 
 download sources
 ```
