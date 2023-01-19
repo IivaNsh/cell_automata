@@ -40,7 +40,7 @@ std::unique_ptr<Texture> texture_front;
 std::unique_ptr<Texture> texture_back;
 
 
-float color_value[3] = {0.1f,0.5f,0.7f};
+float color_value[3] = {1.0f,1.0f,1.0f};
 unsigned int texture_resolution = 20;
 //std::vector<float> texture_init_data;
 

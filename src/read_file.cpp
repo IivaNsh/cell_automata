@@ -12,13 +12,16 @@ std::string readfile(const char* name){
 
     if(!file.is_open()){
         std::cout<<" -> could not open file..\n";
-        return "";
+        return "\0";
     }
     std::cout<<" -> opened -> reading file.. \n";
-    while(file){
-        char c = file.get();
-        s<<c;
-        //std::cout<<c;
-    }
+
+    s<<file.rdbuf();
+
+    //while(file){
+    //    char c = file.get();
+    //    s<<c;
+    //}
+    //s<<'\0';
     return s.str();
 }

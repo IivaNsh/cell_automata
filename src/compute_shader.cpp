@@ -13,8 +13,10 @@ ComputeShader::ComputeShader(const char* cs){
 
     unsigned int compute_shader_code;
 
-    shader_string = readfile(cs); 
+    shader_string = readfile(cs);
     const char* compute_shader_content = shader_string.c_str();
+
+
 
     compute_shader_code = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(compute_shader_code, 1, &compute_shader_content, NULL);
