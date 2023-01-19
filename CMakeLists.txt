@@ -21,6 +21,16 @@ file(GLOB_RECURSE IMGUI_SRC lib/imgui/*.cpp)
 #my source files
 file(GLOB_RECURSE MY_SRC src/*.cpp)
 
+
+
+if($(CMAKE_SYSTEM_NAME) MATCHES "Windows")
+
+    set(CMAKE_CXX_STANDARD_LIBRARIES "-static-libgcc -static-libstdc++ -lwsock32 -lws2_32 ${CMAKE_CXX_STANDARD_LIBRARIES}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
+
+endif()
+
+
 #add exe
 add_executable(cell_automata ${MY_SRC} ${GLAD_SRC} ${STB_SRC} ${IMGUI_SRC})
 target_include_directories(cell_automata PUBLIC lib/glfw/glfw-3.3.8/include) #glfw inlude directory

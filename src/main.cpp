@@ -45,12 +45,12 @@ unsigned int texture_resolution = 20;
 //std::vector<float> texture_init_data;
 
 int mouse_x = 0, mouse_y = 0;
+bool r_pressed=false;
 
 int s_width = SCR_WIDTH, s_height = SCR_HEIGHT;
 
 bool cell_automata_play_state = false;
-
-
+int draw_mode = 0;
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -146,7 +146,10 @@ int main()
     glDebugMessageCallback( MessageCallback, 0 );
 
 
+
+
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
     glfwSetKeyCallback(window, keyboard_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetCursorPosCallback(window, cursor_position_callback);
@@ -167,30 +170,13 @@ int main()
 
 
 
+    cs_play = std::make_unique<ComputeShader>("shaders/base.glsl");
 
-    
+    cs_set = std::make_unique<ComputeShader>("shaders/put.glsl");
 
+    cs_reset = std::make_unique<ComputeShader>("shaders/reset.glsl");
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-    cs_play = std::make_unique<ComputeShader>("shaders/cell_automata_shader.glsl");
-
-    cs_set = std::make_unique<ComputeShader>("shaders/cell_automata_set_shader.glsl");
-
-    cs_reset = std::make_unique<ComputeShader>("shaders/cell_automata_shader_reset.glsl");
-
-    cs_copy = std::make_unique<ComputeShader>("shaders/cell_automata_shader_copy.glsl");
+    cs_copy = std::make_unique<ComputeShader>("shaders/copy.glsl");
 
     gr_shader = std::make_unique<Shader>("shaders/vertex_shader.vs", "shaders/fragment_shader.frag");
 
@@ -287,14 +273,44 @@ int main()
         // ImGui render         
         if(menu_window_state){
             static int counter = 0;
+            static int resolution = texture_resolution;
 
             ImGui::Begin("cell automata settings");
             
-            ImGui::Text("\tu can play with speed and color");
+            ImGui::Text("\tu can play with speed, color, grid resolution");
             
             ImGui::SliderFloat(">speeed<", &speed, 0.0f, 0.5f);
 
             ImGui::ColorEdit3(">color value<", color_value);
+
+            ImGui::InputInt(">resolution<", &resolution);
+
+            if(resolution != texture_resolution){
+
+                
+                texture_resolution = resolution;
+
+                texture_back.release();
+                texture_front.release();
+
+
+                texture_back = std::make_unique<Texture>(texture_resolution);
+                texture_front = std::make_unique<Texture>(texture_resolution);
+
+                cs_reset.get()->bind();
+                texture_back.get()->compute_bind(0);
+                cs_reset.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+                cs_reset.get()->bind();
+                texture_front.get()->compute_bind(0);
+                cs_reset.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+                cell_automata_play_state = false;
+
+                std::cout<<"texture new resolution\n";
+
+            }
+
 
             ImGui::Text("\tjust a cute buttom :3");
 
@@ -431,6 +447,13 @@ void keyboard_callback(GLFWwindow* window, int key, int scancode, int action, in
 
         std::cout<<"texture_reset\n";
     }
+
+    if (key == GLFW_KEY_M && action == GLFW_PRESS){
+
+        draw_mode+=1;
+        draw_mode%=2;
+
+    }
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
@@ -453,7 +476,13 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
         
 
         std::cout<<mouse_x<<" "<<mouse_y<<"     "<<putX<<" "<<putY<<"\n";
-    
+
+        r_pressed = true;
+    }
+    if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE){
+
+        r_pressed = false;
+
     }
     
 }
@@ -462,6 +491,27 @@ static void cursor_position_callback(GLFWwindow* window, double xpos, double ypo
 {
     mouse_x = xpos; mouse_y = ypos;
 
+    if(draw_mode == 1){
+        if(r_pressed){
+
+            unsigned int putX =  int(float(mouse_x)/float(s_width)*float(texture_resolution)); 
+            unsigned int putY =  (texture_resolution-1) - int(float(mouse_y)/float(s_height)*float(texture_resolution)); 
+
+
+            cs_set.get()->bind();
+            texture_front.get()->compute_bind(0);
+            glUniform2i(glGetUniformLocation(cs_set.get()->id, "putPos"), putX, putY); 
+            cs_set.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+            cs_set.get()->bind();
+            texture_back.get()->compute_bind(0);
+            glUniform2i(glGetUniformLocation(cs_set.get()->id, "putPos"), putX, putY); 
+            cs_set.get()->dispatch(texture_resolution, texture_resolution, 1);
+
+
+            std::cout<<mouse_x<<" "<<mouse_y<<"     "<<putX<<" "<<putY<<"\n";
+        }
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
